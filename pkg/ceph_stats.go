@@ -29,10 +29,10 @@ type bucketUsageEntry struct {
 
 type usageCategoryEntry struct {
 	Name          string `json:"category"`
-	BytesSent     int    `json:"bytes_sent"`
-	BytesReceived int    `json:"bytes_received"`
-	Ops           int    `json:"ops"`
-	SuccessfulOps int    `json:"successful_ops"`
+	BytesSent     int64  `json:"bytes_sent"`
+	BytesReceived int64  `json:"bytes_received"`
+	Ops           int64  `json:"ops"`
+	SuccessfulOps int64  `json:"successful_ops"`
 }
 
 func getCephUsageStats(client *http.Client, rgwURL *url.URL, creds *credentials.Credentials) (*usageResponse, error) {
