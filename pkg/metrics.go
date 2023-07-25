@@ -166,53 +166,88 @@ func (c *operationsCollector) FetchMetrics(ctx context.Context, log *logrus.Logg
 
 			c.scrapeCountTotal.With(prometheus.Labels{"status": "success"}).Inc()
 
-			metrics := []prometheus.Metric{}
+			// Ceph will sometimes return duplicate entries with different counts
+			// We have to combine those before returning counters to Prometheus
+			type usageKey struct {
+				Owner    string
+				Bucket   string
+				Category string
+			}
+
+			type usageValue struct {
+				OpsTotal           int64
+				OpsSuccessful      int64
+				SentBytesTotal     int64
+				ReceivedBytesTotal int64
+			}
+
+			combinedUsageStats := map[usageKey]usageValue{}
+
 			for _, entry := range usageStats.Entries {
 				owner := entry.User
 				for _, bucket := range entry.Buckets {
 					bucketName := bucket.ID
 
 					for _, category := range bucket.Categories {
-						metrics = append(metrics,
-							prometheus.NewMetricWithTimestamp(
-								start,
-								prometheus.MustNewConstMetric(
-									c.opsTotal,
-									prometheus.CounterValue,
-									float64(category.Ops),
-									bucketName, owner, category.Name,
-								),
-							),
-							prometheus.NewMetricWithTimestamp(
-								start,
-								prometheus.MustNewConstMetric(
-									c.opsSuccessful,
-									prometheus.CounterValue,
-									float64(category.SuccessfulOps),
-									bucketName, owner, category.Name,
-								),
-							),
-							prometheus.NewMetricWithTimestamp(
-								start,
-								prometheus.MustNewConstMetric(
-									c.sentBytesTotal,
-									prometheus.CounterValue,
-									float64(category.BytesSent),
-									bucketName, owner, category.Name,
-								),
-							),
-							prometheus.NewMetricWithTimestamp(
-								start,
-								prometheus.MustNewConstMetric(
-									c.receivedBytesTotal,
-									prometheus.CounterValue,
-									float64(category.BytesReceived),
-									bucketName, owner, category.Name,
-								),
-							),
-						)
+						key := usageKey{
+							Owner:    owner,
+							Bucket:   bucketName,
+							Category: category.Name,
+						}
+
+						currentValue := combinedUsageStats[key]
+
+						currentValue.OpsTotal += category.Ops
+						currentValue.OpsSuccessful += category.SuccessfulOps
+						currentValue.SentBytesTotal += category.BytesSent
+						currentValue.ReceivedBytesTotal += category.BytesReceived
+
+						combinedUsageStats[key] = currentValue
 					}
 				}
+			}
+
+			// Now create the metrics from the combined usage stats
+			metrics := []prometheus.Metric{}
+			for key, value := range combinedUsageStats {
+				metrics = append(metrics,
+					prometheus.NewMetricWithTimestamp(
+						start,
+						prometheus.MustNewConstMetric(
+							c.opsTotal,
+							prometheus.CounterValue,
+							float64(value.OpsTotal),
+							key.Bucket, key.Owner, key.Category,
+						),
+					),
+					prometheus.NewMetricWithTimestamp(
+						start,
+						prometheus.MustNewConstMetric(
+							c.opsSuccessful,
+							prometheus.CounterValue,
+							float64(value.OpsSuccessful),
+							key.Bucket, key.Owner, key.Category,
+						),
+					),
+					prometheus.NewMetricWithTimestamp(
+						start,
+						prometheus.MustNewConstMetric(
+							c.sentBytesTotal,
+							prometheus.CounterValue,
+							float64(value.SentBytesTotal),
+							key.Bucket, key.Owner, key.Category,
+						),
+					),
+					prometheus.NewMetricWithTimestamp(
+						start,
+						prometheus.MustNewConstMetric(
+							c.receivedBytesTotal,
+							prometheus.CounterValue,
+							float64(value.ReceivedBytesTotal),
+							key.Bucket, key.Owner, key.Category,
+						),
+					),
+				)
 			}
 
 			// Update the metrics
