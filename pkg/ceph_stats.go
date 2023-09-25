@@ -64,6 +64,7 @@ type bucketInfoEntry struct {
 	Name      string                          `json:"bucket"`
 	Owner     string                          `json:"owner"`
 	ZoneGroup string                          `json:"zonegroup"`
+	NumShards uint64                          `json:"num_shards"`
 	Usage     map[string]bucketInfoUsageEntry `json:"usage"`
 	Quota     bucketQuotaEntry                `json:"bucket_quota"`
 }

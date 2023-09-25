@@ -273,6 +273,7 @@ type bucketsCollector struct {
 	bucketUsedBytes           *prometheus.Desc
 	bucketUtilizedBytes       *prometheus.Desc
 	bucketObjectCount         *prometheus.Desc
+	bucketShardCount          *prometheus.Desc
 	bucketQuotaEnabled        *prometheus.Desc
 	bucketQuotaMaxSizeBytes   *prometheus.Desc
 	bucketQuotaMaxObjectCount *prometheus.Desc
@@ -300,6 +301,12 @@ func newBucketsCollector(scrapeDurationSeconds *prometheus.GaugeVec, scrapeCount
 		bucketObjectCount: prometheus.NewDesc(
 			"radosgw_usage_bucket_objects",
 			"Number of objects in the bucket",
+			[]string{"bucket", "owner", "zonegroup"},
+			prometheus.Labels{},
+		),
+		bucketShardCount: prometheus.NewDesc(
+			"radosgw_usage_bucket_shards",
+			"Number of index shards for the bucket",
 			[]string{"bucket", "owner", "zonegroup"},
 			prometheus.Labels{},
 		),
@@ -331,6 +338,7 @@ func (c *bucketsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.bucketUsedBytes
 	ch <- c.bucketUtilizedBytes
 	ch <- c.bucketObjectCount
+	ch <- c.bucketShardCount
 	ch <- c.bucketQuotaEnabled
 	ch <- c.bucketQuotaMaxSizeBytes
 	ch <- c.bucketQuotaMaxObjectCount
@@ -372,6 +380,18 @@ func (c *bucketsCollector) FetchMetrics(ctx context.Context, log *logrus.Logger,
 
 			metrics := []prometheus.Metric{}
 			for _, bucketInfo := range bucketStats {
+				metrics = append(metrics,
+					prometheus.NewMetricWithTimestamp(
+						start,
+						prometheus.MustNewConstMetric(
+							c.bucketShardCount,
+							prometheus.GaugeValue,
+							float64(bucketInfo.NumShards),
+							bucketInfo.Name, bucketInfo.Owner, bucketInfo.ZoneGroup,
+						),
+					),
+				)
+
 				if usage, ok := bucketInfo.Usage["rgw.main"]; ok {
 					metrics = append(metrics,
 						prometheus.NewMetricWithTimestamp(
